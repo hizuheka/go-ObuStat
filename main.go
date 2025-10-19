@@ -71,12 +71,11 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "例: %s monitor -n java.exe -i 200\n", os.Args[0])
 }
 
-// 共通のコマンドラインフラグを設定 (ミリ秒単位に変更)
 func setupFlags(fs *flag.FlagSet) (*string, *string, *string, *int) {
 	processNames := fs.String("n", "", "監視するプロセス名 (カンマ区切り)")
 	pids := fs.String("p", "", "監視するPID (カンマ区切り, '0'でデバッグモード)")
 	outputFile := fs.String("o", "", "出力ファイル名")
-	intervalMilliseconds := fs.Int("i", 1000, "実行間隔(ミリ秒)") // 秒からミリ秒に変更
+	intervalMilliseconds := fs.Int("i", 1000, "実行間隔(ミリ秒)")
 	return processNames, pids, outputFile, intervalMilliseconds
 }
 
@@ -94,7 +93,7 @@ func runMonitorMode() {
 	log.Printf("実行間隔: %d ミリ秒... (Ctrl+Cで停止)", *intervalMilliseconds)
 
 	prevConns := make(map[string]TCPConnection)
-	ticker := time.NewTicker(time.Duration(*intervalMilliseconds) * time.Millisecond) // ミリ秒に変更
+	ticker := time.NewTicker(time.Duration(*intervalMilliseconds) * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -121,7 +120,7 @@ func runSnapshotMode() {
 	log.Printf("監視対象: %s", monitorTarget)
 	log.Printf("実行間隔: %d ミリ秒... (Ctrl+Cで停止)", *intervalMilliseconds)
 
-	ticker := time.NewTicker(time.Duration(*intervalMilliseconds) * time.Millisecond) // ミリ秒に変更
+	ticker := time.NewTicker(time.Duration(*intervalMilliseconds) * time.Millisecond)
 	defer ticker.Stop()
 
 	for currentTime := range ticker.C {
@@ -131,11 +130,14 @@ func runSnapshotMode() {
 			continue
 		}
 
+		// タイムスタンプのフォーマットを "15:04:05.000" に変更
+		timestamp := currentTime.Format("15:04:05.000")
+
 		if len(currentConns) == 0 {
-			log.Printf("--- %s 監視対象に一致する接続は見つかりません ---", currentTime.Format("15:04:05"))
+			log.Printf("--- %s 監視対象に一致する接続は見つかりません ---", timestamp)
 		} else {
 			var report strings.Builder
-			report.WriteString(fmt.Sprintf("--- %s 監視対象の接続 (%d件) ---\n", currentTime.Format("15:04:05"), len(currentConns)))
+			report.WriteString(fmt.Sprintf("--- %s 監視対象の接続 (%d件) ---\n", timestamp, len(currentConns)))
 			for key, conn := range currentConns {
 				report.WriteString(fmt.Sprintf("%s | Process: %-15s (PID: %-5d) | 状態: %-12s\n", key, conn.ProcessName, conn.PID, conn.State))
 			}
@@ -145,7 +147,7 @@ func runSnapshotMode() {
 	}
 }
 
-// --- 共通ロジック (以降は変更なし) ---
+// --- 共通ロジック ---
 func processArgs(processNames, pids string) (targets []string, debugMode bool, monitorTarget string) {
 	if processNames == "" && pids == "" {
 		fmt.Fprintln(os.Stderr, "エラー: -n または -p のどちらかを必ず指定してください。")
@@ -244,7 +246,6 @@ var (
 	processCache = make(map[uint32]string)
 	cacheMutex   sync.Mutex
 )
-
 func getProcessIfTarget(pid uint32, targets []string, debugMode bool) (string, bool) {
 	if debugMode { return getProcessName(pid), true }
 	pidStr := strconv.FormatUint(uint64(pid), 10)
@@ -257,7 +258,6 @@ func getProcessIfTarget(pid uint32, targets []string, debugMode bool) (string, b
 	}
 	return processName, false
 }
-
 func getProcessName(pid uint32) string {
 	cacheMutex.Lock()
 	name, ok := processCache[pid]
@@ -284,7 +284,6 @@ func getProcessName(pid uint32) string {
 	cacheMutex.Unlock()
 	return "N/A"
 }
-
 func ipToString(ip uint32) string { return fmt.Sprintf("%d.%d.%d.%d", byte(ip), byte(ip>>8), byte(ip>>16), byte(ip>>24)) }
 func portToUint16(port uint32) uint16 { return uint16((port >> 8) | ((port & 0xFF) << 8)) }
 func getTCPStateName(state uint32) string {
