@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -28,6 +27,7 @@ type MIB_TCPTABLE_OWNER_PID struct {
 	NumEntries uint32
 	Table      [1]MIB_TCPROW_OWNER_PID
 }
+
 var (
 	iphlpapi                = windows.NewLazySystemDLL("iphlpapi.dll")
 	procGetExtendedTcpTable = iphlpapi.NewProc("GetExtendedTcpTable")
@@ -130,7 +130,6 @@ func runSnapshotMode() {
 			continue
 		}
 
-		// タイムスタンプのフォーマットを "15:04:05.000" に変更
 		timestamp := currentTime.Format("15:04:05.000")
 
 		if len(currentConns) == 0 {
@@ -176,7 +175,9 @@ func processArgs(processNames, pids string) (targets []string, debugMode bool, m
 func setupLogging(outputFile string) {
 	if outputFile != "" {
 		file, err := os.OpenFile(outputFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-		if err != nil { log.Fatalf("エラー: 出力ファイルを開けませんでした: %v", err) }
+		if err != nil {
+			log.Fatalf("エラー: 出力ファイルを開けませんでした: %v", err)
+		}
 		log.SetOutput(io.MultiWriter(os.Stdout, file))
 	}
 	log.SetFlags(0)
@@ -207,7 +208,9 @@ func getFilteredConnections(targets []string, debugMode bool) (map[string]TCPCon
 				RemoteAddr: ipToString(row.RemoteAddr), RemotePort: portToUint16(row.RemotePort),
 				State: getTCPStateName(row.State),
 			}
-			if conn.RemoteAddr == "0.0.0.0" { continue }
+			if conn.RemoteAddr == "0.0.0.0" {
+				continue
+			}
 			key := fmt.Sprintf("%s:%d -> %s:%d", conn.LocalAddr, conn.LocalPort, conn.RemoteAddr, conn.RemotePort)
 			connections[key] = conn
 		}
@@ -242,52 +245,92 @@ func detectAndLogChanges(currentConns, prevConns map[string]TCPConnection) {
 	}
 }
 
-var (
-	processCache = make(map[uint32]string)
-	cacheMutex   sync.Mutex
-)
+var processCache = make(map[uint32]string)
+
 func getProcessIfTarget(pid uint32, targets []string, debugMode bool) (string, bool) {
-	if debugMode { return getProcessName(pid), true }
+	if debugMode {
+		return getProcessName(pid), true
+	}
 	pidStr := strconv.FormatUint(uint64(pid), 10)
 	for _, target := range targets {
-		if target == pidStr { return getProcessName(pid), true }
+		if target == pidStr {
+			return getProcessName(pid), true
+		}
 	}
 	processName := getProcessName(pid)
 	for _, target := range targets {
-		if strings.EqualFold(processName, target) { return getProcessName(pid), true }
+		if strings.EqualFold(processName, target) {
+			return getProcessName(pid), true
+		}
 	}
 	return processName, false
 }
+
 func getProcessName(pid uint32) string {
-	cacheMutex.Lock()
 	name, ok := processCache[pid]
-	if ok { cacheMutex.Unlock(); return name }
-	cacheMutex.Unlock()
+	if ok {
+		return name
+	}
+
 	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
-	if err != nil { return "N/A" }
+	if err != nil {
+		return "N/A"
+	}
 	defer windows.CloseHandle(snapshot)
+
 	var entry windows.ProcessEntry32
 	entry.Size = uint32(unsafe.Sizeof(entry))
-	if err = windows.Process32First(snapshot, &entry); err != nil { return "N/A" }
+
+	if err = windows.Process32First(snapshot, &entry); err != nil {
+		return "N/A"
+	}
+
 	for {
 		if entry.ProcessID == pid {
 			processName := windows.UTF16ToString(entry.ExeFile[:])
-			cacheMutex.Lock()
 			processCache[pid] = processName
-			cacheMutex.Unlock()
 			return processName
 		}
-		if err = windows.Process32Next(snapshot, &entry); err != nil { break }
+		if err = windows.Process32Next(snapshot, &entry); err != nil {
+			break
+		}
 	}
-	cacheMutex.Lock()
+
 	processCache[pid] = "N/A"
-	cacheMutex.Unlock()
 	return "N/A"
 }
-func ipToString(ip uint32) string { return fmt.Sprintf("%d.%d.%d.%d", byte(ip), byte(ip>>8), byte(ip>>16), byte(ip>>24)) }
+
+func ipToString(ip uint32) string {
+	return fmt.Sprintf("%d.%d.%d.%d", byte(ip), byte(ip>>8), byte(ip>>16), byte(ip>>24))
+}
 func portToUint16(port uint32) uint16 { return uint16((port >> 8) | ((port & 0xFF) << 8)) }
 func getTCPStateName(state uint32) string {
 	switch state {
-	case 1: return "CLOSED"; case 2: return "LISTEN"; case 3: return "SYN_SENT"; case 4: return "SYN_RECV"; case 5: return "ESTABLISHED"; case 6: return "FIN_WAIT1"; case 7: return "FIN_WAIT2"; case 8: return "CLOSE_WAIT"; case 9: return "CLOSING"; case 10: return "LAST_ACK"; case 11: return "TIME_WAIT"; case 12: return "DELETE_TCB"; default: return "UNKNOWN"
+	case 1:
+		return "CLOSED"
+	case 2:
+		return "LISTEN"
+	case 3:
+		return "SYN_SENT"
+	case 4:
+		return "SYN_RECV"
+	case 5:
+		return "ESTABLISHED"
+	case 6:
+		return "FIN_WAIT1"
+	case 7:
+		return "FIN_WAIT2"
+	case 8:
+		return "CLOSE_WAIT"
+	case 9:
+		return "CLOSING"
+	case 10:
+		return "LAST_ACK"
+	case 11:
+		return "TIME_WAIT"
+	case 12:
+		return "DELETE_TCB"
+	default:
+		return "UNKNOWN"
 	}
 }
